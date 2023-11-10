@@ -5,12 +5,8 @@
 </div>
 
 
-<div align="c
-
-https://github.com/Amogh-Walia/TrafficMonitor/assets/72308844/747d020a-18d7-4c4f-bcb7-3d9f9ca92952
-
-enter">
-
+<div align="center">
+[https://github.com/Amogh-Walia/TrafficMonitor/assets/72308844/747d020a-18d7-4c4f-bcb7-3d9f9ca92952]
 </div>
 
 
