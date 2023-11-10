@@ -5,8 +5,11 @@
 </div>
 
 
-<div align="center">
-[output](https://github.com/Amogh-Walia/TrafficMonitor/assets/72308844/64ab9247-6ed1-4098-9a0e-25d237d06cf3)
+<div align="c
+
+https://github.com/Amogh-Walia/TrafficMonitor/assets/72308844/747d020a-18d7-4c4f-bcb7-3d9f9ca92952
+
+enter">
 
 </div>
 
