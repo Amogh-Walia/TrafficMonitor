@@ -1,18 +1,13 @@
 <div align="center">
 
-# Vehicle Counting using Yolov5 and Deep Sort
+# Traffic Monitoring using Yolov5 and Deep Sort
 
 </div>
 
-<div align="center">
-
-[![Status](https://img.shields.io/badge/status-active-success.svg)]()
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](/LICENSE)
-
-</div>
 
 <div align="center">
-<img src="assets/output.gif" width="1000px" height="600px">
+![output](https://github.com/Amogh-Walia/TrafficMonitor/assets/72308844/691e85bc-f1be-4d5a-a6a2-769f388abe69)
+
 </div>
 
 
@@ -21,10 +16,10 @@
 
 ## Pre-requisites : 
 
-1) Clone the Repository [vehicle-counting-yolov5](https://github.com/mahimairaja/vehicle-counting-yolov5)
+1) Clone the Repository 
 
 ```bash
-git clone https://github.com/mahimairaja/vehicle-counting-yolov5.git
+git clone https://github.com/Amogh-Walia/TrafficMonitor
 
 cd vehicle-counting-yolov5
 ```
@@ -61,5 +56,3 @@ After completing the above steps your directory should look like somewhat as of 
 python tracker.py 
 # This will download model weight - yolov5s.pt to base folder on first execution.
 ```
-
-#### Feel free to [conect with me](https://www.linkedin.com/in/mahimairaja/)...
