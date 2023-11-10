@@ -6,7 +6,7 @@
 
 
 <div align="center">
-![output](https://github.com/Amogh-Walia/TrafficMonitor/assets/72308844/691e85bc-f1be-4d5a-a6a2-769f388abe69)
+[output](https://github.com/Amogh-Walia/TrafficMonitor/assets/72308844/64ab9247-6ed1-4098-9a0e-25d237d06cf3)
 
 </div>
 
