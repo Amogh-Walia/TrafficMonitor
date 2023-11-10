@@ -5,14 +5,9 @@
 </div>
 
 
-<div align="center">
-<img src="[assets/output.gif](https://github.com/Amogh-Walia/TrafficMonitor/assets/72308844/8f6b83d0-36dd-4b4c-a3f1-bdb85bda38e4
-)" width="1000px" height="600px">
 
+https://github.com/Amogh-Walia/TrafficMonitor/assets/72308844/8f6b83d0-36dd-4b4c-a3f1-bdb85bda38e4
 
-
-
-</div>
 
 
 
