@@ -6,7 +6,11 @@
 
 
 
-https://github.com/Amogh-Walia/TrafficMonitor/assets/72308844/8f6b83d0-36dd-4b4c-a3f1-bdb85bda38e4
+
+
+
+https://github.com/Amogh-Walia/TrafficMonitor/assets/72308844/a8d9b523-b5c2-4474-baf0-a7637a8883fb
+
 
 
 
