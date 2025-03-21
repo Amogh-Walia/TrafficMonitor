@@ -341,7 +341,7 @@ def direction(id,y):
 
 
 if __name__ == '__main__':
-    __author__ = 'Mahimai Raja J'
+    __author__ = 'Mogs'
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', nargs='+', type=str, default='yolov5s.pt', help='model.pt path(s)')
     parser.add_argument('--deep_sort_model', type=str, default='osnet_x0_25')
