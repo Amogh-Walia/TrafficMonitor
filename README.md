@@ -24,7 +24,7 @@ https://github.com/Amogh-Walia/TrafficMonitor/assets/72308844/a8d9b523-b5c2-4474
 ```bash
 git clone https://github.com/Amogh-Walia/TrafficMonitor
 
-cd vehicle-counting-yolov5
+cd TrafficMonitor
 ```
 
 2) Clone the legacy Yolo-v5 Repository
@@ -45,7 +45,7 @@ pip install -r requirements.txt
 
 After completing the above steps your directory should look like somewhat as of below structure
 
-- `vehicle-counting-yolov5`
+- `TrafficMonitor`
    - deep_sort
    - yolov5
    - input.mp4
