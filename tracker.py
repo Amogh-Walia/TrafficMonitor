@@ -1,13 +1,21 @@
-
-
-
 import os
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
-
+from collections import deque
+from collections import defaultdict
+import random
+from sklearn.cluster import KMeans
+# Assign unique color per object ID
+id_colors = {}
+import numpy as np
+def get_color_for_id(obj_id):
+    if obj_id not in id_colors:
+        id_colors[obj_id] = tuple(random.randint(0, 255) for _ in range(3))
+    return id_colors[obj_id]
+fps_deque = deque(maxlen=30)  # track last 30 frames
 import sys
 sys.path.insert(0, './yolov5')
 
@@ -32,11 +40,135 @@ from yolov5.utils.plots import Annotator, colors
 from deep_sort.utils.parser import get_config
 from deep_sort.deep_sort import DeepSort
 
+def compute_slope_intercept(x1, y1, x2, y2):
+    if x2 - x1 == 0:
+        return None, None
+    slope = (y2 - y1) / (x2 - x1)
+    intercept = y1 - slope * x1
+    return slope, intercept
+
+def compute_avg_lines(image):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    height, width = gray.shape
+    x_min = int(width * 0.1)        # 10% from left
+    x_max = int(width * 0.9)        # 90% from left
+    y_min = int(height * 0.4)       # 40% from top (i.e., 60% from bottom)
+    y_max = height                  # Bottom of the image
+
+    # Helper function to check if a point is within the ROI
+    def in_roi(x, y):
+        return x_min <= x <= x_max and y_min <= y <= y_max
+
+    # Step 1: Apply Gaussian Blur to reduce noise
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+
+    # Step 2: Apply Canny Edge Detection
+    edges = cv2.Canny(blurred, 50, 150)
+
+    # Step 3: Use Hough Line Transform to detect straight lines
+    lines = cv2.HoughLinesP(
+        edges,
+        rho=1,
+        theta=np.pi / 180,
+        threshold=100,
+        minLineLength=100,
+        maxLineGap=10
+    )
+
+    # Step 4: Draw lines that match road-like angles
+    selected_lines = []
+
+    if lines is not None:
+        for line in lines:
+            x1, y1, x2, y2 = line[0]
+            angle = np.arctan2(y2 - y1, x2 - x1) * 180 / np.pi
+            
+            # Filter lines with angles close to road edge direction
+            if 20 < angle < 70 and in_roi(x1, y1) and in_roi(x2, y2):
+                selected_lines.append(((x1, y1), (x2, y2)))
+
+    # --- Extract slope and intercept for clustering ---
+
+
+    features = []
+    line_params = []
+
+    for (x1, y1), (x2, y2) in selected_lines:
+        slope, intercept = compute_slope_intercept(x1, y1, x2, y2)
+        if slope is not None:
+            features.append([slope, (x1 + x2) / 2])
+            line_params.append((slope, intercept))
+
+    # --- Apply KMeans to group lines into 2 clusters ---
+    features = np.array(features)
+    kmeans = KMeans(n_clusters=2, random_state=0).fit(features)
+    labels = kmeans.labels_
+
+    # --- Average slope and intercept per cluster ---
+    cluster_lines = {0: [], 1: []}
+    for i, (slope, intercept) in enumerate(line_params):
+        cluster_lines[labels[i]].append((slope, intercept))
+
+    avg_lines = []
+    for group in cluster_lines.values():
+        if group:
+            avg_slope = np.mean([s for s, _ in group])
+            avg_intercept = np.mean([i for _, i in group])
+            avg_lines.append((avg_slope, avg_intercept))
+
+    # Sort lines based on their x-intercept at the bottom of the image (y = height)
+    y_bottom = height  # Assuming `height` is the height of the image
+    avg_lines.sort(key=lambda line: (y_bottom - line[1]) / line[0])  # Sort by x-intercept
+
+    return avg_lines
+
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # yolov5 deepsort root directory
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))  # add ROOT to PATH
 ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
+
+
+def velocity(id,coordinates, fps, avg_lines,image):
+    # Extract slopes and intercepts of the two lines
+    slope1, intercept1 = avg_lines[0]
+    slope2, intercept2 = avg_lines[1]
+
+    # Calculate the horizontal pixel distance between the two lines at the bottom of the image
+    y_bottom = coordinates[-1]["center"][1]  # Use the y-coordinate of the last object's center
+    x1 = (y_bottom - intercept1) / slope1
+    x2 = (y_bottom - intercept2) / slope2
+
+
+    pixel_distance = abs(x2 - x1)
+
+    # Convert pixel distance to meters per pixel
+    meters_per_pixel = 4 / pixel_distance  # 4 meters is the real-world distance
+
+    # Calculate the distance traveled in pixels between frames
+    distance_traveled_between_frames = []
+    for i in range(1, len(coordinates)):
+        x_now, y_now = coordinates[i]["center"]
+        x_before, y_before = coordinates[i - 1]["center"]
+        distance = ((x_now - x_before) ** 2 + (y_now - y_before) ** 2) ** 0.5
+        distance_traveled_between_frames.append(distance)
+
+    # Calculate the average velocity in pixels per second
+    n = len(distance_traveled_between_frames)
+    if n > 0:
+        weighted_sum = sum(distance_traveled_between_frames[i] for i in range(n))/n
+        avg_pixel_velocity = fps * weighted_sum
+    else:
+        avg_pixel_velocity = 0
+
+    # Convert pixel velocity to meters per second
+    avg_meter_velocity = avg_pixel_velocity * meters_per_pixel
+
+    # Convert meters per second to kilometers per hour
+    avg_velocity_kmph = avg_meter_velocity * 3.6
+
+    return avg_velocity_kmph
+
 
 up_count = 0
 down_count = 0
@@ -44,8 +176,13 @@ car_count = 0
 truck_count = 0
 tracker1 = []
 tracker2 = []
+object_coords = defaultdict(list)
 
 dir_data = {}
+
+# Initialize global variables to store running averages
+running_avg_slope = [[],[]]
+running_avg_intercept = [[],[]]
 
 def detect(opt):
     out, source, yolo_model, deep_sort_model, show_vid, save_vid, save_txt, imgsz, evaluate, half, project, name, exist_ok= \
@@ -180,9 +317,34 @@ def detect(opt):
                 t5 = time_sync()
                 dt[3] += t5 - t4
 
+                # Compute average lines
+                height, width, _ = im0.shape
+
+                avg_lines = compute_avg_lines(im0)
+                avg_lines_prime = [[],[]]
+                y1 = height
+                y2 = int(height * 0.4)  # top of ROI (y_min)
+
+                for line_grp  in range(0,len(avg_lines)):
+                    slope, intercept = avg_lines[line_grp]
+                    running_avg_slope[line_grp].append(slope)
+                    running_avg_intercept[line_grp].append(intercept)
+                    intercept_to_use = sum(running_avg_intercept[line_grp])/len(running_avg_intercept[line_grp])
+                    slope_to_use = sum(running_avg_slope[line_grp])/len(running_avg_slope[line_grp])
+
+                    x1 = int((y1 - intercept_to_use) / slope_to_use)
+                    x2 = int((y2 - intercept_to_use) / slope_to_use)
+                    cv2.line(im0, (x1, y1), (x2, y2), (255, 0, 0), 1)  # Blue color for the lines
+                    avg_lines_prime[line_grp] = [slope_to_use, intercept_to_use]
+
+                im0 = cv2.resize(im0, (1000,700))
+                
                 # draw boxes for visualization
                 if len(outputs) > 0:
                     for j, (output, conf) in enumerate(zip(outputs, confs)):
+                        # Track coordinates for each object ID
+
+
 
                         bboxes = output[0:4]
                         id = output[4]
@@ -193,10 +355,36 @@ def detect(opt):
                         #count
                         count_obj(bboxes,w,h,id,_dir,int(cls))
                         # print(im0.shape)
-                        c = int(cls)  # integer class
-                        label = f'{id} {names[c]} {conf:.2f}'
-                        annotator.box_label(bboxes, label, color=colors(c, True))
 
+                        # Draw object trail (center points)
+
+
+
+                        bbox_center = (int((bboxes[0] + bboxes[2]) / 2), int((bboxes[1] + bboxes[3]) / 2))
+                        object_coords[id].append({
+                            "frame": frame_idx,
+                            "center": bbox_center,
+                            "bbox": [int(bboxes[0]), int(bboxes[1]), int(bboxes[2]), int(bboxes[3])]
+                        })
+
+                        pts = object_coords[id]
+                        if len(pts) >= 2:
+                            for i in range(1, len(pts)):
+                                cv2.line(
+                                    im0,
+                                    pts[i - 1]["center"],
+                                    pts[i]["center"],
+                                    get_color_for_id(id),
+                                    thickness=2
+                                )
+
+                        c = int(cls)  # integer class
+                        if len(object_coords[id]) > 2:
+                            velocity_of_id = velocity(id,object_coords[id], vid_cap.get(cv2.CAP_PROP_FPS),avg_lines_prime,im0)
+                        else:
+                            velocity_of_id = 0
+                        label = f'{id} {names[c]} {velocity_of_id :.2f} km/h'
+                        annotator.box_label(bboxes, label, color=colors(c, True))
                         if save_txt:
                             # to MOT format
                             bbox_left = output[0]
@@ -216,6 +404,9 @@ def detect(opt):
                 deepsort.increment_ages()
                 LOGGER.info('No detections')
 
+
+
+
             # Stream results
             im0 = annotator.result()
             if show_vid:
@@ -224,19 +415,19 @@ def detect(opt):
                 # print(f"Shape: {im0.shape}")
 
                 # Left Lane Line
-                cv2.line(im0, (0, h-300), (600, h-300), (255,0,0), thickness=3)
+                # cv2.line(im0, (0, h-300), (600, h-300), (255,0,0), thickness=3)
 
                 # Right Lane Line
-                cv2.line(im0,(680,h-300),(w,h-300),(0,0,255),thickness=3)
+                # cv2.line(im0,(680,h-300),(w,h-300),(0,0,255),thickness=3)
                 
                 thickness = 3 # font thickness
                 font = cv2.FONT_HERSHEY_SIMPLEX
                 fontScale = 1.2 
-                cv2.putText(im0, "Outgoing Traffic:  "+str(up_count), (60, 150), font, 
-                   fontScale, (0,0,255), thickness, cv2.LINE_AA)
+                # cv2.putText(im0, "Outgoing Traffic:  "+str(up_count), (60, 150), font, 
+                #    fontScale, (0,0,255), thickness, cv2.LINE_AA)
 
-                cv2.putText(im0, "Incoming Traffic:  "+str(down_count), (700,150), font, 
-                   fontScale, (255,0,0), thickness, cv2.LINE_AA)
+                # cv2.putText(im0, "Incoming Traffic:  "+str(down_count), (700,150), font, 
+                #    fontScale, (255,0,0), thickness, cv2.LINE_AA)
                 
                 # -- Uncomment the below lines to computer car and truck count --
                 # It is the count of both incoming and outgoing vehicles 
@@ -249,13 +440,19 @@ def detect(opt):
                 #    1.5, (20,255,0), 3, cv2.LINE_AA)  
                 
                 end_time = time.time()
-                fps = 1 / (end_time - start_time)
+                time_taken = end_time - start_time
+                if time_taken == 0:
+
+                    fps = 0
+                else:
+                    fps = 1/time_taken
+                
+                fps_deque.append(1 / (end_time - start_time))
+                cv2.putText(im0, f"source FPS: {vid_cap.get(cv2.CAP_PROP_FPS)}", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
                 cv2.putText(im0, "FPS: " + str(int(fps)), (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
-
-                im0 = cv2.resize(im0, (1000,700))
                 try :
-                    cv2.imshow('iKurious Traffic Management', im0)
+                    cv2.imshow('Walia Traffic Management', im0)
                     if cv2.waitKey(1) % 256 == 27:  # ESC code 
                         raise StopIteration  
                 except KeyboardInterrupt:
@@ -263,7 +460,7 @@ def detect(opt):
                 
 
             # Save results (image with detections)
-            if save_vid:
+            if save_vid or True:
                 if vid_path != save_path:  # new video
                     vid_path = save_path
                     if isinstance(vid_writer, cv2.VideoWriter):
@@ -304,7 +501,7 @@ def count_obj(box,w,h,id,direct,cls):
 
         if cy > (h - 300):
             if id not in tracker1:
-                print(f"\nID: {id}, H: {h} South\n")
+                # print(f"\nID: {id}, H: {h} South\n")
                 down_count +=1
                 tracker1.append(id)
 
@@ -316,7 +513,7 @@ def count_obj(box,w,h,id,direct,cls):
     elif direct=="North":
         if cy < (h - 150):
             if id not in tracker2:
-                print(f"\nID: {id}, H: {h} North\n")
+                # print(f"\nID: {id}, H: {h} North\n")
                 up_count +=1
                 tracker2.append(id)
                 
@@ -345,7 +542,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', nargs='+', type=str, default='yolov5s.pt', help='model.pt path(s)')
     parser.add_argument('--deep_sort_model', type=str, default='osnet_x0_25')
-    parser.add_argument('--source', type=str, default='input.mp4', help='source')  # file/folder, 0 for webcam
+    parser.add_argument('--source', type=str, default=r"C:\Users\amogh\OneDrive\Desktop\CAMSTUFF\shopping_multiple.H265", help='source')  # file/folder, 0 for webcam
     parser.add_argument('--output', type=str, default='inference/output', help='output folder')  # output folder
     parser.add_argument('--imgsz', '--img', '--img-size', nargs='+', type=int, default=[480], help='inference size h,w')
     parser.add_argument('--conf-thres', type=float, default=0.35, help='object confidence threshold')
